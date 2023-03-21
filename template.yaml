@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Template SAM para a solução Suindara Alerta
+#######################################################################################################
+#
+#  Parameters
+#
+#######################################################################################################
+Parameters:
+  MapURL:
+    Type: String
+#######################################################################################################
+#
+#  Resources / CloudFront Distribution
+#
+#######################################################################################################
+Resources:
+  CloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "Cloudfront distribution for ${MapURL}"
+        DefaultRootObject: "index.html"
+        Enabled: true
+        HttpVersion: http2
+        Origins: # List of origins that Cloudfront will connect to
+          - Id: !Sub "s3-${MapURL}"
+            DomainName: !GetAtt WebsiteBucket.DomainName
+            S3OriginConfig:
+              OriginAccessIdentity: # Restricting Bucket access through an origin access identity
+                Fn::Sub: 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        DefaultCacheBehavior: # To connect the CDN to the origins you need to specify behaviours
+          Compress: 'true' # Compress resources automatically ( gzip )
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: false
+          TargetOriginId: !Sub "s3-${MapURL}"
+          ViewerProtocolPolicy : redirect-to-https
+
+  CloudFrontOriginAccessIdentity:
+    Type: 'AWS::CloudFront::CloudFrontOriginAccessIdentity'
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "CloudFront OAI for ${MapURL}"
+#######################################################################################################
+#
+#  Resources / S3 Buckets
+#
+#######################################################################################################
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref MapURL
+
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Statement:
+          -
+            Effect: Allow
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+            Principal:
+              AWS: !Sub "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginAccessIdentity}"
+#######################################################################################################
+#
+#  Outputs
+#
+#######################################################################################################
+Outputs:
+  CloudfrontDistributionDomainName:
+    Value: !GetAtt CloudfrontDistribution.DomainName
